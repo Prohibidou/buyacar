@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FLY Car - Concesionaria</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="public/css/app.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <span class="fs-4">🚗</span> FLY Car
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#" data-page="catalogo">Catálogo</a>
+                    </li>
+                    <li class="nav-item auth-required">
+                        <a class="nav-link" href="#" data-page="mis-reservas">Mis Reservas</a>
+                    </li>
+                    <li class="nav-item auth-required">
+                        <a class="nav-link" href="#" data-page="mis-compras">Mis Compras</a>
+                    </li>
+                    <li class="nav-item vendedor-only">
+                        <a class="nav-link" href="#" data-page="mis-ventas">Mis Ventas</a>
+                    </li>
+                </ul>
+                <div id="user-menu"></div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container py-4">
+        <!-- Catálogo -->
+        <section id="page-catalogo" class="page active">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>Catálogo de Vehículos</h2>
+                <div class="d-flex gap-2">
+                    <select id="filtro-tipo" class="form-select form-select-sm" style="width: auto;">
+                        <option value="">Todos los tipos</option>
+                        <option value="SEDAN">Sedán</option>
+                        <option value="SUV">SUV</option>
+                        <option value="PICKUP">Pickup</option>
+                        <option value="HATCHBACK">Hatchback</option>
+                        <option value="DEPORTIVO">Deportivo</option>
+                    </select>
+                    <input type="text" id="filtro-marca" class="form-control form-control-sm"
+                        placeholder="Buscar marca..." style="width: 150px;">
+                    <button id="btn-filtrar" class="btn btn-outline-primary btn-sm">Filtrar</button>
+                </div>
+            </div>
+            <div id="vehiculos-grid" class="row g-4"></div>
+        </section>
+
+        <!-- Mis Reservas -->
+        <section id="page-mis-reservas" class="page">
+            <h2 class="mb-4">Mis Reservas</h2>
+            <div id="reservas-list"></div>
+        </section>
+
+        <!-- Mis Compras -->
+        <section id="page-mis-compras" class="page">
+            <h2 class="mb-4">Mis Compras</h2>
+            <div id="compras-list"></div>
+        </section>
+
+        <!-- Mis Ventas (Vendedor) -->
+        <section id="page-mis-ventas" class="page">
+            <h2 class="mb-4">Mis Ventas</h2>
+            <div id="ventas-list"></div>
+        </section>
+    </main>
+
+    <!-- Modal: Login/Registro -->
+    <div class="modal fade" id="modalAuth" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <ul class="nav nav-tabs card-header-tabs w-100" role="tablist">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-login">Iniciar
+                                Sesión</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab"
+                                data-bs-target="#tab-registro">Registrarse</button>
+                        </li>
+                    </ul>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="tab-content">
+                        <!-- Login Tab -->
+                        <div class="tab-pane fade show active" id="tab-login">
+                            <form id="form-login">
+                                <div class="mb-3">
+                                    <label class="form-label">Email</label>
+                                    <input type="email" class="form-control" id="login-email" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Contraseña</label>
+                                    <input type="password" class="form-control" id="login-password" required>
+                                </div>
+                                <div id="login-error" class="text-danger mb-3"></div>
+                                <button type="submit" class="btn btn-primary w-100">Ingresar</button>
+                            </form>
+                        </div>
+                        <!-- Registro Tab -->
+                        <div class="tab-pane fade" id="tab-registro">
+                            <form id="form-registro">
+                                <div class="row mb-3">
+                                    <div class="col">
+                                        <label class="form-label">Nombre</label>
+                                        <input type="text" class="form-control" id="reg-nombre" required>
+                                    </div>
+                                    <div class="col">
+                                        <label class="form-label">Apellido</label>
+                                        <input type="text" class="form-control" id="reg-apellido" required>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">DNI</label>
+                                    <input type="text" class="form-control" id="reg-dni" required maxlength="8">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Email</label>
+                                    <input type="email" class="form-control" id="reg-email" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Contraseña</label>
+                                    <input type="password" class="form-control" id="reg-password" required
+                                        minlength="6">
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col">
+                                        <label class="form-label">Teléfono</label>
+                                        <input type="tel" class="form-control" id="reg-telefono">
+                                    </div>
+                                    <div class="col">
+                                        <label class="form-label">Dirección</label>
+                                        <input type="text" class="form-control" id="reg-direccion">
+                                    </div>
+                                </div>
+                                <div id="registro-error" class="text-danger mb-3"></div>
+                                <button type="submit" class="btn btn-success w-100">Registrarme</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Detalle Vehículo -->
+    <div class="modal fade" id="modalVehiculo" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Detalle del Vehículo</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="vehiculo-detalle"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Confirmar Reserva -->
+    <div class="modal fade" id="modalReserva" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirmar Reserva</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="reserva-info"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-success" id="btn-confirmar-reserva">Confirmar Reserva</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-light py-4 mt-5">
+        <div class="container text-center">
+            <p class="mb-0">&copy; 2024 FLY Car - Concesionaria. Todos los derechos reservados.</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="public/js/app.js"></script>
+</body>
+
+</html>
