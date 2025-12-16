@@ -3,10 +3,10 @@
 -- Modelo de Datos G1 - 16 Tablas
 -- =====================================================
 
-CREATE DATABASE IF NOT EXISTS flycar
+CREATE DATABASE IF NOT EXISTS concesionaria_laravel
 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-USE flycar;
+USE concesionaria_laravel;
 
 -- =====================================================
 -- TABLA: Oferta (E7.0.0)

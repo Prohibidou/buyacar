@@ -58,9 +58,9 @@ A PHP MVC application for managing a car dealership, including vehicle quotes, r
 
 | Role | Email | Password |
 |------|-------|----------|
-| Admin | admin@flycar.com | admin123 |
-| Seller | vendedor@flycar.com | vendedor123 |
-| Client | cliente@test.com | cliente123 |
+| Admin | admin@flycar.com | password |
+| Seller | vendedor@flycar.com | password |
+| Client | cliente@test.com | password |
 
 ---
 
