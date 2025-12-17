@@ -19,12 +19,29 @@ class Usuario extends Model
 
     public function getNombreCompleto(): string
     {
-        return $this->nombre . ' ' . $this->apellido;
+        // G1 Schema: nombres están en clientes/vendedores, no en usuarios
+        if (isset($this->nombre) && isset($this->apellido)) {
+            return $this->nombre . ' ' . $this->apellido;
+        }
+
+        // Buscar en clientes
+        $cliente = \App\Database::queryOne("SELECT nombre, apellido FROM clientes WHERE idUsuario = ?", [$this->id ?? $this->idUsuario]);
+        if ($cliente) {
+            return $cliente['nombre'] . ' ' . $cliente['apellido'];
+        }
+
+        // Buscar en vendedores
+        $vendedor = \App\Database::queryOne("SELECT nombre, apellido FROM vendedores WHERE idUsuario = ?", [$this->id ?? $this->idUsuario]);
+        if ($vendedor) {
+            return $vendedor['nombre'] . ' ' . $vendedor['apellido'];
+        }
+
+        return $this->email ?? 'Usuario';
     }
 
     public function verificarPassword(string $password): bool
     {
-        return password_verify($password, $this->password);
+        return password_verify($password, $this->contrasenia ?? $this->password);
     }
 
     public static function registrarCliente(array $datos): ?Cliente

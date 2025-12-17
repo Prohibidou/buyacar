@@ -26,18 +26,28 @@ class AuthController
             return ['success' => false, 'error' => 'Contraseña incorrecta'];
         }
 
+        // G1 Schema: usar idUsuario en lugar de id
+        $userId = $usuario->idUsuario ?? $usuario->id;
+
+        // G1 Schema: obtener rol de TipoUsuarios
+        $rol = $usuario->rol ?? null;
+        if (!$rol && isset($usuario->idTipoUsuario)) {
+            $tipoUsuario = \App\Database::queryOne("SELECT descripcion FROM tipousuarios WHERE idTipoUsuario = ?", [$usuario->idTipoUsuario]);
+            $rol = $tipoUsuario ? $tipoUsuario['descripcion'] : 'CLIENTE';
+        }
+
         // Crear sesión
-        $_SESSION['usuario_id'] = $usuario->id;
+        $_SESSION['usuario_id'] = $userId;
         $_SESSION['usuario_nombre'] = $usuario->getNombreCompleto();
-        $_SESSION['usuario_rol'] = $usuario->rol;
+        $_SESSION['usuario_rol'] = $rol;
         $_SESSION['usuario_email'] = $usuario->email;
 
         return [
             'success' => true,
             'usuario' => [
-                'id' => $usuario->id,
+                'id' => $userId,
                 'nombre' => $usuario->getNombreCompleto(),
-                'rol' => $usuario->rol
+                'rol' => $rol
             ]
         ];
     }

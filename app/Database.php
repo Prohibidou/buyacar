@@ -47,6 +47,13 @@ class Database
         return $stmt;
     }
 
+    public static function queryOne(string $sql, array $params = []): ?array
+    {
+        $stmt = self::query($sql, $params);
+        $result = $stmt->fetch();
+        return $result ?: null;
+    }
+
     public static function lastInsertId(): string
     {
         return self::getInstance()->pdo->lastInsertId();

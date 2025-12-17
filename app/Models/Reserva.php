@@ -4,18 +4,22 @@ namespace App\Models;
 use App\Database;
 
 /**
- * Modelo Reserva
+ * Modelo Reserva - Compatible con G1 Schema
+ * 
+ * G1 Schema: Reservas tiene nroReserva, fechaHoraGenerada, estadoReserva, importe, 
+ * fechaHoraVencimiento, idCotizacion(FK), nroPago(FK)
  */
 class Reserva extends Model
 {
     protected static string $table = 'reservas';
 
     protected array $fillable = [
-        'cliente_id',
-        'vehiculo_id',
-        'fecha_expiracion',
-        'estado',
-        'monto_sena'
+        'fechaHoraGenerada',
+        'estadoReserva',
+        'importe',
+        'fechaHoraVencimiento',
+        'idCotizacion',
+        'nroPago'
     ];
 
     const ESTADOS = ['ACTIVA', 'COMPLETADA', 'CANCELADA', 'VENCIDA'];
@@ -29,16 +33,18 @@ class Reserva extends Model
 
     public function estaActiva(): bool
     {
-        return $this->estado === 'ACTIVA';
+        $estado = $this->estadoReserva ?? $this->estado ?? 'ACTIVA';
+        return $estado === 'ACTIVA';
     }
 
     public function estaVencida(): bool
     {
-        return strtotime($this->fecha_expiracion) < time();
+        $fecha = $this->fechaHoraVencimiento ?? $this->fecha_expiracion;
+        return strtotime($fecha) < time();
     }
 
     /**
-     * Crear una nueva reserva
+     * Crear una nueva reserva (G1: a partir de una cotización)
      */
     public static function crear(int $clienteId, int $vehiculoId): array
     {
@@ -53,15 +59,23 @@ class Reserva extends Model
             $montoSena = self::calcularSena((float) $vehiculo->precio);
             $fechaExpiracion = date('Y-m-d H:i:s', strtotime('+' . self::DIAS_VALIDEZ . ' days'));
 
-            $reserva = self::create([
-                'cliente_id' => $clienteId,
-                'vehiculo_id' => $vehiculoId,
-                'fecha_expiracion' => $fechaExpiracion,
-                'estado' => 'ACTIVA',
-                'monto_sena' => $montoSena,
-                'created_at' => date('Y-m-d H:i:s'),
-                'updated_at' => date('Y-m-d H:i:s')
-            ]);
+            // G1 Schema: Primero crear cotización, luego reserva
+            // Por simplicidad, creamos una cotización automática
+            $sqlCot = "INSERT INTO cotizaciones (fechaHoraGenerada, importeFinal, valida, fechaHoraVencimiento, dniCliente) 
+                       SELECT NOW(), ?, 1, ?, dniCliente FROM clientes WHERE idUsuario = ?";
+            Database::query($sqlCot, [$vehiculo->precio, $fechaExpiracion, $clienteId]);
+            $cotizacionId = Database::lastInsertId();
+
+            // Agregar vehículo a la cotización
+            $sqlCotVeh = "INSERT INTO cotizaciones_vehiculos (idCotizacion, idVehiculo) VALUES (?, ?)";
+            $vehiculoIdDb = $vehiculo->idVehiculo ?? $vehiculoId;
+            Database::query($sqlCotVeh, [$cotizacionId, $vehiculoIdDb]);
+
+            // Crear reserva en G1 schema
+            $sql = "INSERT INTO reservas (fechaHoraGenerada, estadoReserva, importe, fechaHoraVencimiento, idCotizacion) 
+                    VALUES (NOW(), 'ACTIVA', ?, ?, ?)";
+            Database::query($sql, [$montoSena, $fechaExpiracion, $cotizacionId]);
+            $reservaId = Database::lastInsertId();
 
             $vehiculo->actualizarEstado('RESERVADO');
 
@@ -69,7 +83,8 @@ class Reserva extends Model
 
             return [
                 'success' => true,
-                'reserva_id' => $reserva->id,
+                'reserva_id' => $reservaId,
+                'cotizacion_id' => $cotizacionId,
                 'monto_sena' => $montoSena,
                 'fecha_expiracion' => $fechaExpiracion
             ];
@@ -91,15 +106,24 @@ class Reserva extends Model
                 throw new \Exception("La reserva no puede ser cancelada.");
             }
 
-            $sql = "UPDATE reservas SET estado = 'CANCELADA', updated_at = NOW() WHERE id = ?";
-            Database::query($sql, [$this->id]);
+            $id = $this->nroReserva ?? $this->id;
+            $sql = "UPDATE reservas SET estadoReserva = 'CANCELADA' WHERE nroReserva = ?";
+            Database::query($sql, [$id]);
 
-            $vehiculo = Vehiculo::find($this->vehiculo_id);
-            $vehiculo->actualizarEstado('DISPONIBLE');
+            // Liberar vehículos de la cotización
+            $cotId = $this->idCotizacion ?? $this->cotizacion_id;
+            $vehiculosResult = Database::query("SELECT idVehiculo FROM cotizaciones_vehiculos WHERE idCotizacion = ?", [$cotId]);
+            foreach ($vehiculosResult->fetchAll() as $v) {
+                $vehiculo = Vehiculo::find($v['idVehiculo']);
+                if ($vehiculo) {
+                    $vehiculo->actualizarEstado('DISPONIBLE');
+                }
+            }
 
             Database::commit();
 
-            return ['success' => true, 'monto_devuelto' => $this->monto_sena];
+            $importe = $this->importe ?? $this->monto_sena ?? 0;
+            return ['success' => true, 'monto_devuelto' => $importe];
         } catch (\Exception $e) {
             Database::rollBack();
             return ['success' => false, 'error' => $e->getMessage()];
@@ -111,32 +135,37 @@ class Reserva extends Model
      */
     public function completar(): bool
     {
-        $sql = "UPDATE reservas SET estado = 'COMPLETADA', updated_at = NOW() WHERE id = ?";
-        Database::query($sql, [$this->id]);
+        $id = $this->nroReserva ?? $this->id;
+        $sql = "UPDATE reservas SET estadoReserva = 'COMPLETADA' WHERE nroReserva = ?";
+        Database::query($sql, [$id]);
         return true;
     }
 
     /**
-     * Obtener reservas con datos de vehículo
+     * Obtener reservas con datos de vehículo (G1 Schema)
      */
     public static function conVehiculo(int $clienteId): array
     {
-        $sql = "SELECT r.*, v.marca, v.modelo, v.anio, v.precio as precio_vehiculo
+        // G1: Reservas → Cotizaciones → Cotizaciones_Vehiculos → Vehiculos
+        $sql = "SELECT r.*, v.idVehiculo, v.precio as precio_vehiculo, v.anio, v.descripcion,
+                       mo.nombre as modelo, ma.nombre as marca
                 FROM reservas r
-                JOIN vehiculos v ON r.vehiculo_id = v.id
-                WHERE r.cliente_id = ?
-                ORDER BY r.created_at DESC";
+                JOIN cotizaciones c ON r.idCotizacion = c.idCotizacion
+                JOIN clientes cl ON c.dniCliente = cl.dniCliente
+                LEFT JOIN cotizaciones_vehiculos cv ON c.idCotizacion = cv.idCotizacion
+                LEFT JOIN vehiculos v ON cv.idVehiculo = v.idVehiculo
+                LEFT JOIN modelos mo ON v.idModelo = mo.idModelo
+                LEFT JOIN marcas ma ON mo.idMarca = ma.idMarca
+                WHERE cl.idUsuario = ?
+                ORDER BY r.fechaHoraGenerada DESC";
         $stmt = Database::query($sql, [$clienteId]);
         return $stmt->fetchAll();
     }
 
-    public function getVehiculo(): ?Vehiculo
+    public static function find($id): ?self
     {
-        return Vehiculo::find($this->vehiculo_id);
-    }
-
-    public function getCliente(): ?Cliente
-    {
-        return Cliente::find($this->cliente_id);
+        $sql = "SELECT * FROM reservas WHERE nroReserva = ?";
+        $row = Database::queryOne($sql, [$id]);
+        return $row ? new self($row) : null;
     }
 }
