@@ -49,29 +49,30 @@ class Usuario extends Model
         try {
             \App\Database::beginTransaction();
 
-            // Crear usuario
-            $usuario = self::create([
-                'nombre' => $datos['nombre'],
-                'apellido' => $datos['apellido'],
-                'email' => $datos['email'],
-                'password' => password_hash($datos['password'], PASSWORD_DEFAULT),
-                'rol' => 'CLIENTE',
-                'activo' => 1,
-                'created_at' => date('Y-m-d H:i:s'),
-                'updated_at' => date('Y-m-d H:i:s')
-            ]);
-
-            // Crear cliente
-            $sql = "INSERT INTO clientes (id, direccion, telefono, dni) VALUES (?, ?, ?, ?)";
+            // G1 Schema: Usuarios tiene email, contrasenia, idTipoUsuario
+            // TipoUsuarios: 1=CLIENTE, 2=VENDEDOR, 3=ADMINISTRADOR
+            $sql = "INSERT INTO usuarios (email, contrasenia, idTipoUsuario) VALUES (?, ?, 1)";
             \App\Database::query($sql, [
-                $usuario->id,
+                $datos['email'],
+                password_hash($datos['password'], PASSWORD_DEFAULT)
+            ]);
+            $usuarioId = \App\Database::lastInsertId();
+
+            // G1 Schema: Clientes tiene dniCliente(PK), nombre, apellido, fechaNacimiento, direccion, email, idUsuario(FK)
+            $sql = "INSERT INTO clientes (dniCliente, nombre, apellido, fechaNacimiento, direccion, email, idUsuario) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?)";
+            \App\Database::query($sql, [
+                $datos['dni'],
+                $datos['nombre'],
+                $datos['apellido'],
+                $datos['fechaNacimiento'] ?? null,
                 $datos['direccion'] ?? '',
-                $datos['telefono'] ?? '',
-                $datos['dni']
+                $datos['email'],
+                $usuarioId
             ]);
 
             \App\Database::commit();
-            return Cliente::find($usuario->id);
+            return Cliente::find($usuarioId);
         } catch (\Exception $e) {
             \App\Database::rollBack();
             throw $e;
