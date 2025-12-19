@@ -4,79 +4,84 @@ namespace App\Models;
 use App\Database;
 
 /**
- * Modelo Venta
+ * Modelo Venta - Compatible con G1 Schema
+ * 
+ * G1 Schema: Ventas = idVenta(PK), fechaHoraGenerada, concretada, comision, nroPago(FK), idCotizacion(FK), dniVendedor(FK)
  */
 class Venta extends Model
 {
     protected static string $table = 'ventas';
 
     protected array $fillable = [
-        'cliente_id',
-        'vendedor_id',
-        'vehiculo_id',
-        'reserva_id',
-        'precio_final',
-        'metodo_pago',
-        'comision_vendedor'
+        'idCotizacion',
+        'dniVendedor',
+        'comision',
+        'concretada',
+        'nroPago'
     ];
 
-    const METODOS_PAGO = ['EFECTIVO', 'TARJETA_CREDITO', 'TARJETA_DEBITO', 'TRANSFERENCIA', 'FINANCIADO'];
-
     /**
-     * Realizar una venta
+     * Realizar una venta desde una reserva (flujo G1)
+     * La reserva está vinculada a una cotización, y la venta se crea desde esa cotización
      */
-    public static function realizar(int $clienteId, int $vendedorId, int $vehiculoId, string $metodoPago, ?int $reservaId = null): array
+    public static function realizarDesdeReserva(int $reservaId, int $vendedorId): array
     {
         try {
             Database::beginTransaction();
 
-            $vehiculo = Vehiculo::find($vehiculoId);
-            if (!$vehiculo) {
-                throw new \Exception("Vehículo no encontrado.");
+            // Buscar la reserva y su cotización
+            $reserva = Database::queryOne(
+                "SELECT r.*, c.idCotizacion, c.importeFinal, c.dniCliente 
+                 FROM reservas r 
+                 JOIN cotizaciones c ON r.idCotizacion = c.idCotizacion 
+                 WHERE r.nroReserva = ? AND r.estadoReserva = 'ACTIVA'",
+                [$reservaId]
+            );
+
+            if (!$reserva) {
+                throw new \Exception("Reserva no encontrada o no está activa.");
             }
 
-            if (!in_array($vehiculo->estado, ['DISPONIBLE', 'RESERVADO'])) {
-                throw new \Exception("El vehículo no está disponible para venta.");
-            }
-
+            // Obtener el vendedor
             $vendedor = Vendedor::find($vendedorId);
             if (!$vendedor) {
                 throw new \Exception("Vendedor no válido.");
             }
 
-            $precioFinal = (float) $vehiculo->precio;
-            $comision = $vendedor->calcularComision($precioFinal);
+            // Calcular comisión (10% del importe según PDF CU-4)
+            $comision = $reserva['importeFinal'] * 0.10;
 
-            // Si hay reserva, completarla y descontar seña
-            if ($reservaId) {
-                $reserva = Reserva::find($reservaId);
-                if ($reserva && $reserva->estaActiva()) {
-                    $reserva->completar();
-                    $precioFinal -= (float) $reserva->monto_sena;
-                }
+            // Crear la venta
+            $sql = "INSERT INTO ventas (fechaHoraGenerada, concretada, comision, idCotizacion, dniVendedor) 
+                    VALUES (NOW(), TRUE, ?, ?, ?)";
+            Database::query($sql, [$comision, $reserva['idCotizacion'], $vendedor->getDni()]);
+            $ventaId = Database::lastInsertId();
+
+            // Actualizar estado de la reserva a COMPLETADA
+            Database::query(
+                "UPDATE reservas SET estadoReserva = 'COMPLETADA' WHERE nroReserva = ?",
+                [$reservaId]
+            );
+
+            // Actualizar estado del vehículo a VENDIDO
+            $vehiculo = Database::queryOne(
+                "SELECT cv.idVehiculo FROM cotizaciones_vehiculos cv WHERE cv.idCotizacion = ?",
+                [$reserva['idCotizacion']]
+            );
+            if ($vehiculo) {
+                Database::query(
+                    "UPDATE vehiculos SET estadoVehiculo = 'VENDIDO' WHERE idVehiculo = ?",
+                    [$vehiculo['idVehiculo']]
+                );
             }
-
-            $venta = self::create([
-                'cliente_id' => $clienteId,
-                'vendedor_id' => $vendedorId,
-                'vehiculo_id' => $vehiculoId,
-                'reserva_id' => $reservaId,
-                'precio_final' => $precioFinal,
-                'metodo_pago' => $metodoPago,
-                'comision_vendedor' => $comision,
-                'created_at' => date('Y-m-d H:i:s'),
-                'updated_at' => date('Y-m-d H:i:s')
-            ]);
-
-            $vehiculo->actualizarEstado('VENDIDO');
 
             Database::commit();
 
             return [
                 'success' => true,
-                'venta_id' => $venta->id,
-                'precio_final' => $precioFinal,
-                'comision_vendedor' => $comision
+                'venta_id' => $ventaId,
+                'comision' => $comision,
+                'importe_final' => $reserva['importeFinal']
             ];
         } catch (\Exception $e) {
             Database::rollBack();
@@ -85,26 +90,34 @@ class Venta extends Model
     }
 
     /**
-     * Obtener ventas con datos relacionados
+     * Obtener ventas con datos relacionados (para vendedor)
      */
-    public static function conDetalles(?int $vendedorId = null): array
+    public static function conDetalles(?string $dniVendedor = null): array
     {
-        $sql = "SELECT v.*, 
-                       ve.marca, ve.modelo, ve.anio,
-                       CONCAT(c.nombre, ' ', c.apellido) as cliente_nombre,
-                       CONCAT(vd.nombre, ' ', vd.apellido) as vendedor_nombre
+        $sql = "SELECT v.idVenta as id, 
+                       v.fechaHoraGenerada as created_at,
+                       v.comision as comision_vendedor,
+                       c.importeFinal as precio_final, 
+                       c.dniCliente,
+                       CONCAT(cl.nombre, ' ', cl.apellido) as cliente_nombre,
+                       mo.nombre as modelo, 
+                       ma.nombre as marca,
+                       ve.anio
                 FROM ventas v
-                JOIN vehiculos ve ON v.vehiculo_id = ve.id
-                JOIN usuarios c ON v.cliente_id = c.id
-                JOIN usuarios vd ON v.vendedor_id = vd.id";
+                JOIN cotizaciones c ON v.idCotizacion = c.idCotizacion
+                JOIN clientes cl ON c.dniCliente = cl.dniCliente
+                JOIN cotizaciones_vehiculos cv ON c.idCotizacion = cv.idCotizacion
+                JOIN vehiculos ve ON cv.idVehiculo = ve.idVehiculo
+                JOIN modelos mo ON ve.idModelo = mo.idModelo
+                JOIN marcas ma ON mo.idMarca = ma.idMarca";
 
         $params = [];
-        if ($vendedorId) {
-            $sql .= " WHERE v.vendedor_id = ?";
-            $params[] = $vendedorId;
+        if ($dniVendedor) {
+            $sql .= " WHERE v.dniVendedor = ?";
+            $params[] = $dniVendedor;
         }
 
-        $sql .= " ORDER BY v.created_at DESC";
+        $sql .= " ORDER BY v.fechaHoraGenerada DESC";
         $stmt = Database::query($sql, $params);
         return $stmt->fetchAll();
     }
@@ -112,29 +125,30 @@ class Venta extends Model
     /**
      * Obtener compras de un cliente
      */
-    public static function comprasCliente(int $clienteId): array
+    public static function comprasCliente(string $dniCliente): array
     {
-        $sql = "SELECT v.*, ve.marca, ve.modelo, ve.anio
+        $sql = "SELECT v.idVenta as id, 
+                       v.fechaHoraGenerada as created_at,
+                       c.importeFinal as precio_final,
+                       mo.nombre as modelo, 
+                       ma.nombre as marca,
+                       ve.anio,
+                       'Tarjeta' as metodo_pago
                 FROM ventas v
-                JOIN vehiculos ve ON v.vehiculo_id = ve.id
-                WHERE v.cliente_id = ?
-                ORDER BY v.created_at DESC";
-        $stmt = Database::query($sql, [$clienteId]);
+                JOIN cotizaciones c ON v.idCotizacion = c.idCotizacion
+                JOIN cotizaciones_vehiculos cv ON c.idCotizacion = cv.idCotizacion
+                JOIN vehiculos ve ON cv.idVehiculo = ve.idVehiculo
+                JOIN modelos mo ON ve.idModelo = mo.idModelo
+                JOIN marcas ma ON mo.idMarca = ma.idMarca
+                WHERE c.dniCliente = ? AND v.concretada = 1
+                ORDER BY v.fechaHoraGenerada DESC";
+        $stmt = Database::query($sql, [$dniCliente]);
         return $stmt->fetchAll();
     }
 
-    public function getVehiculo(): ?Vehiculo
+    public static function find($id): ?self
     {
-        return Vehiculo::find($this->vehiculo_id);
-    }
-
-    public function getCliente(): ?Cliente
-    {
-        return Cliente::find($this->cliente_id);
-    }
-
-    public function getVendedor(): ?Vendedor
-    {
-        return Vendedor::find($this->vendedor_id);
+        $row = Database::queryOne("SELECT * FROM ventas WHERE idVenta = ?", [$id]);
+        return $row ? new self($row) : null;
     }
 }

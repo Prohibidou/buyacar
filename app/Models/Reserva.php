@@ -45,8 +45,11 @@ class Reserva extends Model
 
     /**
      * Crear una nueva reserva (G1: a partir de una cotización)
+     * @param int $clienteId ID del usuario cliente
+     * @param int $vehiculoId ID del vehículo
+     * @param array $accesorioIds IDs de accesorios seleccionados (opcional)
      */
-    public static function crear(int $clienteId, int $vehiculoId): array
+    public static function crear(int $clienteId, int $vehiculoId, array $accesorioIds = []): array
     {
         try {
             Database::beginTransaction();
@@ -56,25 +59,53 @@ class Reserva extends Model
                 throw new \Exception("El vehículo no está disponible para reserva.");
             }
 
-            $montoSena = self::calcularSena((float) $vehiculo->precio);
+            // Calcular precio base
+            $precioVehiculo = (float) $vehiculo->precio;
+            $idModelo = $vehiculo->idModelo;
+
+            // Calcular precio de accesorios
+            $precioAccesorios = 0.0;
+            if (!empty($accesorioIds)) {
+                $precioAccesorios = Accesorio::calcularPrecioAccesorios($idModelo, $accesorioIds);
+            }
+
+            // Calcular subtotal e IVA (21%)
+            $subtotal = $precioVehiculo + $precioAccesorios;
+            $iva = $subtotal * 0.21;
+            $importeFinal = $subtotal + $iva;
+
+            $montoSena = $importeFinal * (self::PORCENTAJE_SENA / 100);
             $fechaExpiracion = date('Y-m-d H:i:s', strtotime('+' . self::DIAS_VALIDEZ . ' days'));
 
-            // G1 Schema: Primero crear cotización, luego reserva
-            // Por simplicidad, creamos una cotización automática
+            // G1 Schema: Primero crear cotización
             $sqlCot = "INSERT INTO cotizaciones (fechaHoraGenerada, importeFinal, valida, fechaHoraVencimiento, dniCliente) 
                        SELECT NOW(), ?, 1, ?, dniCliente FROM clientes WHERE idUsuario = ?";
-            Database::query($sqlCot, [$vehiculo->precio, $fechaExpiracion, $clienteId]);
+            Database::query($sqlCot, [$importeFinal, $fechaExpiracion, $clienteId]);
             $cotizacionId = Database::lastInsertId();
 
             // Agregar vehículo a la cotización
-            $sqlCotVeh = "INSERT INTO cotizaciones_vehiculos (idCotizacion, idVehiculo) VALUES (?, ?)";
             $vehiculoIdDb = $vehiculo->idVehiculo ?? $vehiculoId;
-            Database::query($sqlCotVeh, [$cotizacionId, $vehiculoIdDb]);
+            Database::query(
+                "INSERT INTO cotizaciones_vehiculos (idCotizacion, idVehiculo) VALUES (?, ?)",
+                [$cotizacionId, $vehiculoIdDb]
+            );
+
+            // Agregar accesorios a la cotización (tabla cotizaciones_vehiculos_accesorios)
+            if (!empty($accesorioIds)) {
+                foreach ($accesorioIds as $accId) {
+                    Database::query(
+                        "INSERT INTO cotizaciones_vehiculos_accesorios (idCotizacion, idVehiculo, idAccesorio) VALUES (?, ?, ?)",
+                        [$cotizacionId, $vehiculoIdDb, $accId]
+                    );
+                }
+            }
 
             // Crear reserva en G1 schema
-            $sql = "INSERT INTO reservas (fechaHoraGenerada, estadoReserva, importe, fechaHoraVencimiento, idCotizacion) 
-                    VALUES (NOW(), 'ACTIVA', ?, ?, ?)";
-            Database::query($sql, [$montoSena, $fechaExpiracion, $cotizacionId]);
+            Database::query(
+                "INSERT INTO reservas (fechaHoraGenerada, estadoReserva, importe, fechaHoraVencimiento, idCotizacion) 
+                 VALUES (NOW(), 'ACTIVA', ?, ?, ?)",
+                [$montoSena, $fechaExpiracion, $cotizacionId]
+            );
             $reservaId = Database::lastInsertId();
 
             $vehiculo->actualizarEstado('RESERVADO');
@@ -85,8 +116,15 @@ class Reserva extends Model
                 'success' => true,
                 'reserva_id' => $reservaId,
                 'cotizacion_id' => $cotizacionId,
-                'monto_sena' => $montoSena,
-                'fecha_expiracion' => $fechaExpiracion
+                'monto_sena' => round($montoSena, 2),
+                'fecha_expiracion' => $fechaExpiracion,
+                'desglose' => [
+                    'precio_vehiculo' => $precioVehiculo,
+                    'precio_accesorios' => $precioAccesorios,
+                    'subtotal' => $subtotal,
+                    'iva_21' => round($iva, 2),
+                    'total' => round($importeFinal, 2)
+                ]
             ];
         } catch (\Exception $e) {
             Database::rollBack();
@@ -147,7 +185,11 @@ class Reserva extends Model
     public static function conVehiculo(int $clienteId): array
     {
         // G1: Reservas → Cotizaciones → Cotizaciones_Vehiculos → Vehiculos
-        $sql = "SELECT r.*, v.idVehiculo, v.precio as precio_vehiculo, v.anio, v.descripcion,
+        // Alias column names to match JavaScript frontend expectations
+        $sql = "SELECT r.nroReserva as id, r.estadoReserva as estado, 
+                       r.fechaHoraGenerada as created_at, r.importe as monto_sena,
+                       r.fechaHoraVencimiento as fecha_expiracion, r.idCotizacion,
+                       v.idVehiculo, v.precio as precio_vehiculo, v.anio, v.descripcion,
                        mo.nombre as modelo, ma.nombre as marca
                 FROM reservas r
                 JOIN cotizaciones c ON r.idCotizacion = c.idCotizacion
