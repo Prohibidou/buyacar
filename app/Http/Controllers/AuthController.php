@@ -29,11 +29,24 @@ class AuthController
         // G1 Schema: usar idUsuario en lugar de id
         $userId = $usuario->idUsuario ?? $usuario->id;
 
-        // G1 Schema: obtener rol de TipoUsuarios
-        $rol = $usuario->rol ?? null;
-        if (!$rol && isset($usuario->idTipoUsuario)) {
-            $tipoUsuario = \App\Database::queryOne("SELECT descripcion FROM tipousuarios WHERE idTipoUsuario = ?", [$usuario->idTipoUsuario]);
-            $rol = $tipoUsuario ? $tipoUsuario['descripcion'] : 'CLIENTE';
+        // G1 Schema: obtener rol de TipoUsuarios directamente
+        $idTipoUsuario = $usuario->idTipoUsuario ?? null;
+        $rol = null;
+
+        if ($idTipoUsuario) {
+            $tipoUsuario = \App\Database::queryOne("SELECT descripcion FROM TipoUsuarios WHERE idTipoUsuario = ?", [$idTipoUsuario]);
+            $rol = $tipoUsuario ? strtoupper($tipoUsuario['descripcion']) : null;
+        }
+
+        // Si aún no hay rol, buscar directamente consultando el usuario con JOIN
+        if (!$rol) {
+            $userData = \App\Database::queryOne(
+                "SELECT t.descripcion FROM Usuarios u 
+                 JOIN TipoUsuarios t ON u.idTipoUsuario = t.idTipoUsuario 
+                 WHERE u.idUsuario = ?",
+                [$userId]
+            );
+            $rol = $userData ? strtoupper($userData['descripcion']) : 'CLIENTE';
         }
 
         // Crear sesión
@@ -75,7 +88,7 @@ class AuthController
 
         try {
             $cliente = Usuario::registrarCliente($datos);
-            return ['success' => true, 'usuario_id' => $cliente->id];
+            return ['success' => true, 'usuario_id' => $cliente->idUsuario ?? $cliente->id];
         } catch (\Exception $e) {
             return ['success' => false, 'error' => 'Error al registrar: ' . $e->getMessage()];
         }

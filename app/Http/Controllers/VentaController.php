@@ -10,7 +10,7 @@ class VentaController
 {
 
     /**
-     * Realizar una venta
+     * Realizar una venta desde una reserva (G1 flow)
      */
     public function store(array $datos): array
     {
@@ -20,13 +20,12 @@ class VentaController
 
         $vendedorId = AuthController::id();
 
-        return Venta::realizar(
-            (int) $datos['cliente_id'],
-            $vendedorId,
-            (int) $datos['vehiculo_id'],
-            $datos['metodo_pago'],
-            isset($datos['reserva_id']) ? (int) $datos['reserva_id'] : null
-        );
+        // G1 Schema: la venta se realiza desde una reserva
+        if (!isset($datos['reserva_id']) || empty($datos['reserva_id'])) {
+            return ['success' => false, 'error' => 'Se requiere el ID de la reserva'];
+        }
+
+        return Venta::realizarDesdeReserva((int) $datos['reserva_id'], $vendedorId);
     }
 
     /**
@@ -38,7 +37,13 @@ class VentaController
             return ['success' => false, 'error' => 'No autorizado'];
         }
 
-        $ventas = Venta::conDetalles(AuthController::id());
+        // G1 Schema: obtener dniVendedor desde tabla vendedores usando idUsuario
+        $vendedor = \App\Database::queryOne(
+            "SELECT dniVendedor FROM vendedores WHERE idUsuario = ?",
+            [AuthController::id()]
+        );
+
+        $ventas = $vendedor ? Venta::conDetalles($vendedor['dniVendedor']) : [];
         return [
             'success' => true,
             'ventas' => $ventas
@@ -54,7 +59,13 @@ class VentaController
             return ['success' => false, 'error' => 'No autorizado'];
         }
 
-        $compras = Venta::comprasCliente(AuthController::id());
+        // G1 Schema: obtener dniCliente desde tabla clientes usando idUsuario
+        $cliente = \App\Database::queryOne(
+            "SELECT dniCliente FROM clientes WHERE idUsuario = ?",
+            [AuthController::id()]
+        );
+
+        $compras = $cliente ? Venta::comprasCliente($cliente['dniCliente']) : [];
         return [
             'success' => true,
             'compras' => $compras
