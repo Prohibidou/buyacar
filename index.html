@@ -192,6 +192,40 @@
         </div>
     </div>
 
+    <!-- Modal: Notificación (reemplaza alert) -->
+    <div class="modal fade" id="modalNotificacion" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header" id="notificacion-header">
+                    <h5 class="modal-title" id="notificacion-titulo">Notificación</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="notificacion-contenido"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Aceptar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Confirmación (reemplaza confirm) -->
+    <div class="modal fade" id="modalConfirm" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title" id="confirm-titulo">Confirmar Acción</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="confirm-contenido"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"
+                        id="btn-confirm-cancelar">Cancelar</button>
+                    <button type="button" class="btn btn-danger" id="btn-confirm-aceptar">Confirmar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer class="bg-dark text-light py-4 mt-5">
         <div class="container text-center">

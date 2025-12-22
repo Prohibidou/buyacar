@@ -12,6 +12,85 @@ $(document).ready(function () {
     const modalAuth = new bootstrap.Modal('#modalAuth');
     const modalVehiculo = new bootstrap.Modal('#modalVehiculo');
     const modalReserva = new bootstrap.Modal('#modalReserva');
+    const modalNotificacion = new bootstrap.Modal('#modalNotificacion');
+    const modalConfirm = new bootstrap.Modal('#modalConfirm');
+
+    // =========================================
+    // FUNCIONES DE NOTIFICACIÓN (reemplazan alert/confirm)
+    // =========================================
+
+    /**
+     * Muestra un modal de notificación estilizado (reemplaza alert)
+     * @param {string} titulo - Título del modal
+     * @param {string} contenido - Contenido HTML del mensaje
+     * @param {string} tipo - 'success', 'error', 'info', 'warning'
+     * @param {function} callback - Función a ejecutar cuando se cierre el modal
+     */
+    function mostrarNotificacion(titulo, contenido, tipo = 'info', callback = null) {
+        const header = $('#notificacion-header');
+        const iconos = {
+            success: '✅',
+            error: '❌',
+            warning: '⚠️',
+            info: 'ℹ️'
+        };
+        const clases = {
+            success: 'bg-success text-white',
+            error: 'bg-danger text-white',
+            warning: 'bg-warning text-dark',
+            info: 'bg-primary text-white'
+        };
+
+        header.removeClass('bg-success bg-danger bg-warning bg-primary text-white text-dark')
+            .addClass(clases[tipo] || clases.info);
+
+        $('#notificacion-titulo').html(`${iconos[tipo] || iconos.info} ${titulo}`);
+        $('#notificacion-contenido').html(contenido);
+
+        // Configurar callback al cerrar
+        if (callback) {
+            $('#modalNotificacion').off('hidden.bs.modal').on('hidden.bs.modal', function () {
+                callback();
+                $(this).off('hidden.bs.modal');
+            });
+        }
+
+        modalNotificacion.show();
+    }
+
+    /**
+     * Muestra un modal de confirmación estilizado (reemplaza confirm)
+     * @param {string} titulo - Título del modal
+     * @param {string} contenido - Contenido HTML del mensaje
+     * @param {function} onConfirm - Función a ejecutar si confirma
+     * @param {function} onCancel - Función a ejecutar si cancela
+     */
+    function mostrarConfirm(titulo, contenido, onConfirm, onCancel = null) {
+        $('#confirm-titulo').text(titulo);
+        $('#confirm-contenido').html(contenido);
+
+        // Limpiar handlers anteriores
+        $('#btn-confirm-aceptar').off('click');
+        $('#btn-confirm-cancelar').off('click');
+        $('#modalConfirm').off('hidden.bs.modal');
+
+        // Configurar handlers
+        $('#btn-confirm-aceptar').on('click', function () {
+            modalConfirm.hide();
+            if (onConfirm) onConfirm();
+        });
+
+        $('#btn-confirm-cancelar').on('click', function () {
+            modalConfirm.hide();
+            if (onCancel) onCancel();
+        });
+
+        $('#modalConfirm').on('hidden.bs.modal', function () {
+            // Si se cierra sin confirmar, ejecutar onCancel
+        });
+
+        modalConfirm.show();
+    }
 
     // =========================================
     // INICIALIZACIÓN
@@ -115,9 +194,15 @@ $(document).ready(function () {
             direccion: $('#reg-direccion').val()
         }, 'POST').done(function (resp) {
             if (resp.success) {
-                alert('¡Registro exitoso! Ahora puedes iniciar sesión.');
-                $('#form-registro')[0].reset();
-                $('[data-bs-target="#tab-login"]').click();
+                mostrarNotificacion(
+                    '¡Registro Exitoso!',
+                    '<p>Tu cuenta ha sido creada correctamente.</p><p>Ahora puedes iniciar sesión con tu email y contraseña.</p>',
+                    'success',
+                    function () {
+                        $('#form-registro')[0].reset();
+                        $('[data-bs-target="#tab-login"]').click();
+                    }
+                );
             } else {
                 $('#registro-error').text(resp.error);
             }
@@ -163,12 +248,12 @@ $(document).ready(function () {
                                 <div class="card-body">
                                     <h5 class="card-title">${v.marca} ${v.modelo}</h5>
                                     <p class="card-text text-muted small">
-                                        📅 ${v.anio} &nbsp; 🎨 ${v.color} &nbsp; 📊 ${Number(v.kilometraje).toLocaleString()} km
+                                        📅 ${v.anio} &nbsp; ${v.descripcion || ''}
                                     </p>
                                     <p class="precio mb-3">$${Number(v.precio).toLocaleString()}</p>
                                     <div class="d-grid gap-2">
-                                        <button class="btn btn-primary btn-sm btn-ver-detalle" data-id="${v.id}">Ver Detalle</button>
-                                        <button class="btn btn-success btn-sm btn-reservar" data-id="${v.id}">Reservar</button>
+                                        <button class="btn btn-primary btn-sm btn-ver-detalle" data-id="${v.idVehiculo}">Ver Detalle</button>
+                                        <button class="btn btn-success btn-sm btn-reservar" data-id="${v.idVehiculo}">Reservar</button>
                                     </div>
                                 </div>
                             </div>
@@ -204,16 +289,15 @@ $(document).ready(function () {
                         <div class="image-section">🚗</div>
                         <div class="info-section">
                             <h4>${v.marca} ${v.modelo} ${v.anio}</h4>
-                            <span class="badge badge-${v.estado.toLowerCase()} mb-3">${v.estado}</span>
+                            <span class="badge badge-${(v.estadoVehiculo || 'disponible').toLowerCase()} mb-3">${v.estadoVehiculo || 'DISPONIBLE'}</span>
                             <div class="specs">
-                                <p><span>Tipo</span> <strong>${v.tipo}</strong></p>
-                                <p><span>Color</span> <strong>${v.color}</strong></p>
-                                <p><span>Kilometraje</span> <strong>${Number(v.kilometraje).toLocaleString()} km</strong></p>
+                                <p><span>Año</span> <strong>${v.anio}</strong></p>
+                                <p><span>Chasis</span> <strong>${v.nroChasis || 'N/A'}</strong></p>
                             </div>
                             <p class="text-muted mt-3">${v.descripcion || 'Sin descripción'}</p>
                             <div class="precio">$${Number(v.precio).toLocaleString()}</div>
-                            ${v.estado === 'DISPONIBLE' ?
-                        `<button class="btn btn-success btn-lg w-100 btn-reservar-modal" data-id="${v.id}">Reservar Vehículo</button>` :
+                            ${(v.estadoVehiculo || 'DISPONIBLE') === 'DISPONIBLE' ?
+                        `<button class="btn btn-success btn-lg w-100 btn-reservar-modal" data-id="${v.idVehiculo}">Reservar Vehículo</button>` :
                         '<p class="text-muted">Este vehículo no está disponible</p>'
                     }
                         </div>
@@ -227,54 +311,213 @@ $(document).ready(function () {
     // =========================================
     // RESERVAS
     // =========================================
+
+    // Variables para manejar el estado de la reserva
+    let vehiculoReserva = null;
+    let accesoriosDisponibles = [];
+
     $(document).on('click', '.btn-reservar, .btn-reservar-modal', function () {
         const id = $(this).data('id');
 
         api('session').done(function (resp) {
             if (!resp.logueado) {
-                alert('Debes iniciar sesión para hacer una reserva');
-                modalVehiculo.hide();
-                modalAuth.show();
+                mostrarNotificacion(
+                    'Iniciar Sesión Requerido',
+                    '<p>Debes iniciar sesión para hacer una reserva.</p><p>Por favor ingresa con tu cuenta o regístrate si aún no tienes una.</p>',
+                    'warning',
+                    function () {
+                        modalVehiculo.hide();
+                        modalAuth.show();
+                    }
+                );
                 return;
             }
 
             if (resp.usuario.rol !== 'CLIENTE') {
-                alert('Solo los clientes pueden hacer reservas');
+                mostrarNotificacion(
+                    'Acción No Permitida',
+                    '<p>Solo los clientes pueden hacer reservas.</p><p>Los vendedores y administradores deben usar una cuenta de cliente para reservar vehículos.</p>',
+                    'error'
+                );
                 return;
             }
 
+            // Cargar vehículo y accesorios disponibles
             api('vehiculo', { id }).done(function (vResp) {
                 if (vResp.success) {
-                    const v = vResp.vehiculo;
-                    const sena = Number(v.precio) * 0.05;
+                    vehiculoReserva = vResp.vehiculo;
 
-                    $('#reserva-info').html(`
-                        <p><strong>Vehículo:</strong> ${v.marca} ${v.modelo} ${v.anio}</p>
-                        <p><strong>Precio:</strong> $${Number(v.precio).toLocaleString()}</p>
-                        <p><strong>Seña a pagar (5%):</strong> <span class="text-success fw-bold">$${sena.toLocaleString()}</span></p>
-                        <p><strong>Validez de reserva:</strong> 7 días</p>
-                        <hr>
-                        <p class="text-muted small">La seña se descontará del precio final al concretar la compra.</p>
-                    `);
-                    $('#btn-confirmar-reserva').data('vehiculo-id', id);
-                    modalVehiculo.hide();
-                    modalReserva.show();
+                    // Cargar accesorios para el modelo del vehículo
+                    api('accesorios-modelo', { id_modelo: vehiculoReserva.idModelo }).done(function (accResp) {
+                        accesoriosDisponibles = accResp.success ? accResp.accesorios : [];
+                        mostrarModalReservaConAccesorios();
+                    }).fail(function () {
+                        accesoriosDisponibles = [];
+                        mostrarModalReservaConAccesorios();
+                    });
                 }
             });
         });
     });
 
+    function mostrarModalReservaConAccesorios() {
+        const v = vehiculoReserva;
+        const precioVehiculo = Number(v.precio);
+
+        // Generar HTML de accesorios
+        let accesoriosHtml = '';
+        if (accesoriosDisponibles.length > 0) {
+            accesoriosHtml = `
+                <div class="mb-3">
+                    <h6 class="fw-bold">🔧 Accesorios Disponibles</h6>
+                    <div class="accesorios-lista border rounded p-2">
+            `;
+            accesoriosDisponibles.forEach(function (acc) {
+                accesoriosHtml += `
+                    <div class="form-check">
+                        <input class="form-check-input accesorio-check" type="checkbox" 
+                               value="${acc.idAccesorio}" 
+                               data-precio="${acc.precio}"
+                               data-nombre="${acc.nombre}"
+                               id="acc-${acc.idAccesorio}">
+                        <label class="form-check-label d-flex justify-content-between w-100" for="acc-${acc.idAccesorio}">
+                            <span>${acc.nombre}</span>
+                            <span class="text-primary fw-bold">+$${Number(acc.precio).toLocaleString()}</span>
+                        </label>
+                    </div>
+                `;
+            });
+            accesoriosHtml += `
+                    </div>
+                </div>
+            `;
+        }
+
+        // Calcular precios iniciales (sin accesorios)
+        const subtotalInicial = precioVehiculo;
+        const ivaInicial = subtotalInicial * 0.21;
+        const totalInicial = subtotalInicial + ivaInicial;
+        const senaInicial = totalInicial * 0.05;
+
+        $('#reserva-info').html(`
+            <div class="reserva-detalle">
+                <p><strong>🚗 Vehículo:</strong> ${v.marca} ${v.modelo} ${v.anio}</p>
+                
+                ${accesoriosHtml}
+                
+                <hr>
+                <div class="desglose-precios">
+                    <div class="d-flex justify-content-between">
+                        <span>Precio vehículo:</span>
+                        <span id="precio-vehiculo">$${precioVehiculo.toLocaleString()}</span>
+                    </div>
+                    <div class="d-flex justify-content-between text-muted" id="linea-accesorios" style="display: none !important;">
+                        <span>Accesorios:</span>
+                        <span id="precio-accesorios">$0</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Subtotal:</span>
+                        <span id="subtotal">$${subtotalInicial.toLocaleString()}</span>
+                    </div>
+                    <div class="d-flex justify-content-between text-muted">
+                        <span>IVA (21%):</span>
+                        <span id="precio-iva">$${ivaInicial.toLocaleString()}</span>
+                    </div>
+                    <div class="d-flex justify-content-between fw-bold fs-5 mt-2 pt-2 border-top">
+                        <span>Total:</span>
+                        <span id="precio-total" class="text-primary">$${totalInicial.toLocaleString()}</span>
+                    </div>
+                </div>
+                <hr>
+                <div class="bg-success bg-opacity-10 p-3 rounded">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span><strong>Seña a pagar (5%):</strong></span>
+                        <span id="precio-sena" class="text-success fw-bold fs-5">$${senaInicial.toLocaleString()}</span>
+                    </div>
+                    <p class="text-muted small mb-0 mt-1">La seña se descontará del precio final.</p>
+                </div>
+                <p class="mt-2 mb-0"><strong>📅 Validez de reserva:</strong> 7 días</p>
+            </div>
+        `);
+
+        $('#btn-confirmar-reserva').data('vehiculo-id', v.idVehiculo);
+        modalVehiculo.hide();
+        modalReserva.show();
+
+        // Configurar eventos para recalcular precios
+        $('.accesorio-check').off('change').on('change', recalcularPreciosReserva);
+    }
+
+    function recalcularPreciosReserva() {
+        const precioVehiculo = Number(vehiculoReserva.precio);
+        let precioAccesorios = 0;
+
+        $('.accesorio-check:checked').each(function () {
+            precioAccesorios += Number($(this).data('precio'));
+        });
+
+        const subtotal = precioVehiculo + precioAccesorios;
+        const iva = subtotal * 0.21;
+        const total = subtotal + iva;
+        const sena = total * 0.05;
+
+        // Actualizar UI
+        $('#linea-accesorios').css('display', precioAccesorios > 0 ? 'flex' : 'none');
+        $('#precio-accesorios').text('$' + precioAccesorios.toLocaleString());
+        $('#subtotal').text('$' + subtotal.toLocaleString());
+        $('#precio-iva').text('$' + iva.toLocaleString());
+        $('#precio-total').text('$' + total.toLocaleString());
+        $('#precio-sena').text('$' + sena.toLocaleString());
+    }
+
     // Confirmar reserva
     $('#btn-confirmar-reserva').click(function () {
         const vehiculoId = $(this).data('vehiculo-id');
 
-        api('reservar', { vehiculo_id: vehiculoId }, 'POST').done(function (resp) {
+        // Recoger accesorios seleccionados
+        const accesoriosSeleccionados = [];
+        $('.accesorio-check:checked').each(function () {
+            accesoriosSeleccionados.push($(this).val());
+        });
+
+        api('reservar', {
+            vehiculo_id: vehiculoId,
+            accesorios: accesoriosSeleccionados
+        }, 'POST').done(function (resp) {
+            modalReserva.hide();
             if (resp.success) {
-                alert(`¡Reserva realizada!\n\nNúmero: ${resp.reserva_id}\nSeña: $${Number(resp.monto_sena).toLocaleString()}\nVálida hasta: ${resp.fecha_expiracion}`);
-                modalReserva.hide();
-                cargarVehiculos();
+                // Construir mensaje con desglose
+                let desgloseHtml = '';
+                if (resp.desglose) {
+                    desgloseHtml = `
+                        <hr>
+                        <p class="mb-1"><strong>Desglose:</strong></p>
+                        <p class="mb-0 small">Vehículo: $${Number(resp.desglose.precio_vehiculo).toLocaleString()}</p>
+                        ${resp.desglose.precio_accesorios > 0 ? `<p class="mb-0 small">Accesorios: $${Number(resp.desglose.precio_accesorios).toLocaleString()}</p>` : ''}
+                        <p class="mb-0 small">IVA (21%): $${Number(resp.desglose.iva_21).toLocaleString()}</p>
+                        <p class="mb-0 small fw-bold">Total: $${Number(resp.desglose.total).toLocaleString()}</p>
+                    `;
+                }
+
+                mostrarNotificacion(
+                    '¡Reserva Realizada!',
+                    `<p><strong>Número de Reserva:</strong> #${resp.reserva_id}</p>
+                     <p><strong>Seña Pagada:</strong> $${Number(resp.monto_sena).toLocaleString()}</p>
+                     <p><strong>Válida hasta:</strong> ${resp.fecha_expiracion}</p>
+                     ${desgloseHtml}
+                     <hr>
+                     <p class="text-muted small">Puedes ver el estado de tu reserva en "Mis Reservas".</p>`,
+                    'success',
+                    function () {
+                        cargarVehiculos();
+                    }
+                );
             } else {
-                alert('Error: ' + resp.error);
+                mostrarNotificacion(
+                    'Error en la Reserva',
+                    `<p>${resp.error}</p>`,
+                    'error'
+                );
             }
         });
     });
@@ -313,17 +556,35 @@ $(document).ready(function () {
 
     // Cancelar reserva
     $(document).on('click', '.btn-cancelar-reserva', function () {
-        if (confirm('¿Cancelar esta reserva?')) {
-            const id = $(this).data('id');
-            api('cancelar-reserva', { reserva_id: id }, 'POST').done(function (resp) {
-                if (resp.success) {
-                    alert(`Reserva cancelada. Monto devuelto: $${Number(resp.monto_devuelto).toLocaleString()}`);
-                    cargarMisReservas();
-                } else {
-                    alert('Error: ' + resp.error);
-                }
-            });
-        }
+        const id = $(this).data('id');
+
+        mostrarConfirm(
+            'Cancelar Reserva',
+            `<p>¿Estás seguro de que deseas cancelar esta reserva?</p>
+             <p class="text-muted small">Se te devolverá el monto de la seña.</p>`,
+            function () {
+                // onConfirm
+                api('cancelar-reserva', { reserva_id: id }, 'POST').done(function (resp) {
+                    if (resp.success) {
+                        mostrarNotificacion(
+                            'Reserva Cancelada',
+                            `<p>Tu reserva ha sido cancelada exitosamente.</p>
+                             <p><strong>Monto Devuelto:</strong> $${Number(resp.monto_devuelto).toLocaleString()}</p>`,
+                            'success',
+                            function () {
+                                cargarMisReservas();
+                            }
+                        );
+                    } else {
+                        mostrarNotificacion(
+                            'Error',
+                            `<p>${resp.error}</p>`,
+                            'error'
+                        );
+                    }
+                });
+            }
+        );
     });
 
     // =========================================
@@ -385,7 +646,91 @@ $(document).ready(function () {
             } else {
                 $('#ventas-list').html('<div class="empty-state"><div class="icon">💼</div><p>No tienes ventas registradas</p></div>');
             }
+
+            // Cargar reservas pendientes DESPUÉS de que termine la lista de ventas
+            cargarReservasPendientes();
         });
     }
+
+    function cargarReservasPendientes() {
+        api('reservas-pendientes').done(function (resp) {
+            if (resp.success && resp.reservas.length > 0) {
+                let html = '<h5 class="mt-4 mb-3 text-warning">📋 Reservas Pendientes de Confirmar</h5>';
+                resp.reservas.forEach(function (r) {
+                    html += `
+                        <div class="list-item border-warning">
+                            <div class="info">
+                                <h5>${r.marca} ${r.modelo}</h5>
+                                <p>Reserva #${r.nroReserva} - ${r.fechaHoraGenerada}</p>
+                                <p>Cliente: ${r.cliente_nombre}</p>
+                                <p>Seña pagada: $${Number(r.importe).toLocaleString()}</p>
+                            </div>
+                            <div class="text-end">
+                                <p class="mb-2"><strong>Total:</strong> $${Number(r.importeFinal).toLocaleString()}</p>
+                                <button type="button" class="btn btn-success btn-sm btn-confirmar-venta" data-reserva-id="${r.nroReserva}">
+                                    ✅ Confirmar Venta
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                $('#ventas-list').append(html);
+            }
+        });
+    }
+
+    // Confirmar venta desde reserva pendiente
+    $(document).on('click', '.btn-confirmar-venta', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const $btn = $(this);
+        const reservaId = $btn.data('reserva-id');
+
+        mostrarConfirm(
+            'Confirmar Venta',
+            `<p>¿Confirmar esta venta?</p>
+             <p class="text-muted small">Esta acción completará la transacción y registrará la venta en el sistema.</p>`,
+            function () {
+                // onConfirm
+                $btn.prop('disabled', true).text('Procesando...');
+
+                api('venta', { reserva_id: reservaId }, 'POST').done(function (resp) {
+                    if (resp.success) {
+                        mostrarNotificacion(
+                            '¡Venta Confirmada!',
+                            `<p><strong>Venta #:</strong> ${resp.venta_id}</p>
+                             <p><strong>Importe Total:</strong> $${Number(resp.importe_final).toLocaleString()}</p>
+                             <p><strong>Tu Comisión:</strong> <span class="text-success">$${Number(resp.comision).toLocaleString()}</span></p>`,
+                            'success',
+                            function () {
+                                $btn.closest('.list-item').fadeOut(300, function () {
+                                    $(this).remove();
+                                    cargarMisVentas();
+                                });
+                            }
+                        );
+                    } else {
+                        mostrarNotificacion(
+                            'Error en la Venta',
+                            `<p>${resp.error}</p>`,
+                            'error'
+                        );
+                        $btn.prop('disabled', false).text('✅ Confirmar Venta');
+                    }
+                }).fail(function () {
+                    mostrarNotificacion(
+                        'Error de Conexión',
+                        '<p>No se pudo conectar con el servidor. Por favor intenta de nuevo.</p>',
+                        'error'
+                    );
+                    $btn.prop('disabled', false).text('✅ Confirmar Venta');
+                });
+            },
+            function () {
+                // onCancel - no hacer nada
+            }
+        );
+    });
 
 });
